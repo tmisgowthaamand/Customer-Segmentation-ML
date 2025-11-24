@@ -58,9 +58,15 @@ preprocessor = DataPreprocessor()
 # Separate features for clustering (exclude CustomerID)
 features_for_clustering = df.drop('CustomerID', axis=1) if 'CustomerID' in df.columns else df
 
+# Store original indices before preprocessing
+original_indices = features_for_clustering.index
+
 # Preprocess
 df_processed = preprocessor.preprocess(features_for_clustering, remove_outliers=True, fit=True)
 print(f"Processed data shape: {df_processed.shape}")
+
+# Track which rows remained after outlier removal
+retained_indices = df_processed.index
 
 # 4. Find Optimal Number of Clusters
 print("\n[4] Finding Optimal Number of Clusters...")
