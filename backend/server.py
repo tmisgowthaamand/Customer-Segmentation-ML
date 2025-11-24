@@ -66,6 +66,85 @@ async def get_status_checks():
     
     return status_checks
 
+
+# Customer Segmentation Models
+class CustomerInput(BaseModel):
+    age: int = Field(..., ge=18, le=100)
+    gender: str
+    income: float = Field(..., ge=0)
+    spending_score: int = Field(..., ge=1, le=100)
+    region: str
+    purchase_frequency: int = Field(..., ge=0)
+    avg_order_value: float = Field(..., ge=0)
+    recency: int = Field(..., ge=0, le=365)
+
+class ClusterPrediction(BaseModel):
+    cluster: int
+    cluster_size: int
+    cluster_characteristics: dict
+
+
+@api_router.post("/predict_cluster", response_model=ClusterPrediction)
+async def predict_customer_cluster(customer: CustomerInput):
+    """
+    Predict which cluster a customer belongs to based on their attributes
+    """
+    try:
+        import sys
+        sys.path.append('/app/customer_segmentation')
+        
+        import pandas as pd
+        import joblib
+        from src.clustering_model import CustomerSegmentation
+        
+        # Load models
+        model = CustomerSegmentation.load_model('/app/customer_segmentation/model/kmeans_model.pkl')
+        preprocessor = joblib.load('/app/customer_segmentation/model/preprocessor.pkl')
+        
+        # Calculate total spend
+        total_spend = customer.purchase_frequency * customer.avg_order_value
+        
+        # Create dataframe
+        customer_data = pd.DataFrame({
+            'Age': [customer.age],
+            'Gender': [customer.gender],
+            'Income': [customer.income],
+            'SpendingScore': [customer.spending_score],
+            'Region': [customer.region],
+            'PurchaseFrequency': [customer.purchase_frequency],
+            'AvgOrderValue': [customer.avg_order_value],
+            'Recency': [customer.recency],
+            'TotalSpend': [total_spend]
+        })
+        
+        # Preprocess
+        customer_processed = preprocessor.preprocess(customer_data, remove_outliers=False, fit=False)
+        
+        # Predict
+        cluster = int(model.predict(customer_processed)[0])
+        
+        # Load reference data for cluster info
+        df_ref = pd.read_csv('/app/customer_segmentation/data/customers_clustered.csv')
+        cluster_data = df_ref[df_ref['Cluster'] == cluster]
+        
+        cluster_chars = {
+            'avg_income': float(cluster_data['Income'].mean()),
+            'avg_spending_score': float(cluster_data['SpendingScore'].mean()),
+            'avg_total_spend': float(cluster_data['TotalSpend'].mean()),
+            'avg_purchase_frequency': float(cluster_data['PurchaseFrequency'].mean()),
+            'avg_recency': float(cluster_data['Recency'].mean())
+        }
+        
+        return ClusterPrediction(
+            cluster=cluster,
+            cluster_size=len(cluster_data),
+            cluster_characteristics=cluster_chars
+        )
+        
+    except Exception as e:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
+
 # Include the router in the main app
 app.include_router(api_router)
 
