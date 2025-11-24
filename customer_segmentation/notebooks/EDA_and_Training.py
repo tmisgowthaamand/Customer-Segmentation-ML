@@ -86,9 +86,22 @@ segmentation.train(df_processed)
 print("\n[6] Generating Cluster Assignments...")
 cluster_labels = segmentation.predict(df_processed)
 
-# Add clusters to original dataframe
+# Add clusters to original dataframe (only for rows that weren't removed as outliers)
 df_original = pd.read_csv('/app/customer_segmentation/data/customers.csv')
-df_original['Cluster'] = cluster_labels
+df_original.loc[retained_indices, 'Cluster'] = cluster_labels
+
+# For removed outliers, assign them to nearest cluster
+if len(df_original) != len(cluster_labels):
+    print(f"Assigning {len(df_original) - len(cluster_labels)} outlier rows to nearest clusters...")
+    outlier_indices = df_original.index.difference(retained_indices)
+    outlier_data = df_original.loc[outlier_indices]
+    outlier_features = outlier_data.drop(['CustomerID', 'Cluster'], axis=1, errors='ignore')
+    outlier_processed = preprocessor.preprocess(outlier_features, remove_outliers=False, fit=False)
+    outlier_clusters = segmentation.predict(outlier_processed)
+    df_original.loc[outlier_indices, 'Cluster'] = outlier_clusters
+
+# Convert cluster to int
+df_original['Cluster'] = df_original['Cluster'].astype(int)
 
 # 7. Cluster Analysis
 print("\n[7] Cluster Analysis")
